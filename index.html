@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tangentbordskungen v7</title>
+<style>
+  :root{ --bg:#111; --fg:#fff; --muted:#ccc; --ok:#0f0; --bad:#f00; --card:#1a1a1a; }
+  html,body{height:100%;}
+  body{ font-family: Arial, sans-serif; background: var(--bg); color: var(--fg); text-align: center; margin:0; padding: clamp(12px,2.5vw,24px); font-size: clamp(16px, 2.2vw, 20px); }
+  h1{ font-size: clamp(1.4rem, 5.5vw, 2.2rem); margin: 0 0 0.6rem; }
+  #instructions{ max-width: 900px; margin: 12px auto; font-size: 1rem; color: var(--muted); background: var(--card); border-radius: 12px; padding: clamp(10px,2vw,16px); }
+  #speedControl{ margin: 12px auto; display:flex; align-items:center; justify-content:center; gap: clamp(.4rem,2.5vw,.8rem); flex-wrap: wrap; }
+  .speed-btn{ font-size: clamp(1.4rem,6vw,2rem); padding: clamp(8px,2.2vw,12px) clamp(14px,3vw,20px); cursor: pointer; border:none; border-radius:12px; }
+  #speedDisplay{ font-size: clamp(1.1rem,4.5vw,1.6rem); min-width: 4ch; }
+  #startBtn, #stopBtn, #retryBtn{ font-size: clamp(1.1rem,4.8vw,2rem); padding: clamp(10px,2.8vw,15px) clamp(18px,4vw,30px); border:none; border-radius:12px; cursor:pointer; margin: 8px; width: min(100%, 340px); box-sizing: border-box; }
+  #startBtn{ background:#28a745; color:#fff; }
+  #stopBtn{ background:#dc3545; color:#fff; }
+  #retryBtn{ background:#444; color:#fff; }
+  #startBtn:disabled, #stopBtn:disabled, #retryBtn:disabled{ opacity:.5; cursor:not-allowed; }
+  .statusbar{ max-width: 900px; margin: 8px auto; padding: 8px; color: var(--muted); }
+  .big-key{ font-size: clamp(3rem, 18vw, 10rem); margin: clamp(10px,3vw,20px); line-height: 1; }
+  #fingerLabel{ margin-top: 10px; font-size: clamp(1rem, 4.5vw, 1.5rem); min-height: 2.2em; }
+  .correct{ color: var(--ok); }
+  .incorrect{ color: var(--bad); }
+</style>
+</head>
+<body>
+  <main>
+    <h1>Tangentbordskungen v7 👑</h1>
+    <p>Ändra hastighet på talet vid behov</p>
+    <div id="speedControl" aria-label="Talhastighet">
+      <button id="slower" class="speed-btn" title="Sakta">🐢</button>
+      <span id="speedDisplay">1.5x</span>
+      <button id="faster" class="speed-btn" title="Snabbt">🐇</button>
+    </div>
+    <div id="instructions">
+      <p>Syftet med spelet är att träna korrekt fingersättning på tangentbordet, använd därför ett fysiskt tangentbord när du spelar.</p>
+      <p>Spelet har inbyggd talsyntes. För bästa upplevelse rekommenderas att du stänger av din vanliga skärmläsare under spelet.</p>
+      <p><strong>Tillgängliga kommandon:</strong></p>
+      <ul style="text-align:left; display:inline-block;">
+        <li><strong>Enter</strong>: Starta eller stoppa spelet</li>
+        <li><strong>R</strong>: Försök igen om du förlorat</li>
+        <li><strong>Backspace</strong>: Repetera aktuell bokstav med ord och fingerposition</li>
+      </ul>
+    </div>
+    <div class="controls">
+      <button id="startBtn">Starta</button>
+      <button id="stopBtn" disabled>Stoppa</button>
+      <button id="retryBtn" disabled>Försök igen</button>
+    </div>
+    <div class="statusbar">
+      <p>Poäng: <span id="score">0</span> | Bästa: <span id="best">0</span> | Kapitel: <span id="chapter">1</span> | Liv: <span id="lives">❤️❤️❤️❤️❤️</span></p>
+    </div>
+    <div id="keyLabel" class="big-key" aria-live="assertive">—</div>
+    <div id="fingerLabel" class="big-key-desc" aria-live="polite"></div>
+  </main>
+
+<script>
+// ===== Tangentbordskungen v7 – komplett spelkod =====
+
+// Bokstavstabell (inkl. ändringen för c)
+const INSTR = {
+  'a': ['a som i apa', 'vänster lillfinger'],
+  'b': ['b som i bada', 'vänster pekfinger ner höger'],
+  'c': ['c som i cykla', 'vänster långfinger ner'],
+  'd': ['d som i dansa', 'vänster långfinger'],
+  'e': ['e som i emma', 'vänster långfinger upp'],
+  'f': ['f som i flyga', 'vänster pekfinger'],
+  'g': ['g som i gräva', 'vänster pekfinger höger'],
+  'h': ['h som i hoppa', 'höger pekfinger vänster'],
+  'i': ['i som i illa', 'höger pekfinger upp'],
+  'j': ['j som i jama', 'höger pekfinger'],
+  'k': ['k som i köpa', 'höger långfinger'],
+  'l': ['l som i läsa', 'höger ringfinger'],
+  'm': ['m som i måla', 'höger pekfinger ner höger'],
+  'n': ['n som i nysa', 'höger pekfinger ner vänster'],
+  'o': ['o som i osa', 'höger ringfinger upp'],
+  'p': ['p som i prata', 'höger lillfinger upp'],
+  'q': ['q som i quizza', 'vänster lillfinger upp'],
+  'r': ['r som i rita', 'vänster pekfinger upp'],
+  's': ['s som i sola', 'vänster ringfinger'],
+  't': ['t som i titta', 'vänster pekfinger upp höger'],
+  'u': ['u som i uggla', 'höger pekfinger upp'],
+  'v': ['v som i vila', 'vänster pekfinger ner höger'],
+  'w': ['w som i wifi', 'vänster ringfinger upp'],
+  'x': ['x som i x', 'vänster ringfinger ner'],
+  'y': ['y som i yla', 'höger pekfinger upp vänster'],
+  'z': ['z som i zooma', 'vänster lillfinger ner'],
+  'å': ['å som i åka', 'höger lillfinger upp höger'],
+  'ä': ['ä som i äta', 'höger lillfinger höger'],
+  'ö': ['ö som i önska', 'höger lillfinger']
+};
+
+// Konstanter
+const HOME=['a','s','d','f','g','h','j','k','l','ö','ä'];
+const TIERS=[['r','u'],['t','y'],['v','b','n','m','c'],['e','i'],['o','p','å'],['q','w','x','z']];
+const MAX_LIVES=5;
+
+// State
+let running=false,current=null,score=0,lives=MAX_LIVES;
+let best=Number(localStorage.getItem('tangentkungenHighScore')||0);
+let correctCount={},spaceCounter=0,spaceTarget=randomSpaceTarget();
+let speechRate=1.5; // standardhastighet
+let wrongRepeats=0; // inte använd längre för liv, men kan behållas om vi vill spåra
+
+// Elements
+const els={
+  score:document.getElementById('score'),best:document.getElementById('best'),
+  chapter:document.getElementById('chapter'),lives:document.getElementById('lives'),
+  key:document.getElementById('keyLabel'),finger:document.getElementById('fingerLabel'),
+  start:document.getElementById('startBtn'),stop:document.getElementById('stopBtn'),retry:document.getElementById('retryBtn'),
+  slower:document.getElementById('slower'),faster:document.getElementById('faster'),speedDisplay:document.getElementById('speedDisplay')
+};
+els.best.textContent=best;
+
+// Tal
+function speak(t){
+  try{const u=new SpeechSynthesisUtterance(t);const vs=speechSynthesis.getVoices();const sv=vs.find(v=>v.lang&&v.lang.toLowerCase().startsWith('sv'));if(sv)u.voice=sv;u.rate=speechRate;u.pitch=1.2;speechSynthesis.cancel();speechSynthesis.speak(u);}catch{}
+}
+function speakQ(t){
+  try{const u=new SpeechSynthesisUtterance(t);const vs=speechSynthesis.getVoices();const sv=vs.find(v=>v.lang&&v.lang.toLowerCase().startsWith('sv'));if(sv)u.voice=sv;u.rate=speechRate;u.pitch=1.2;speechSynthesis.speak(u);}catch{}
+}
+if('speechSynthesis'in window){window.speechSynthesis.onvoiceschanged=()=>{};}
+
+// Ljud
+let audioCtx=null;function getAudioCtx(){const AC=window.AudioContext||window.webkitAudioContext;if(!audioCtx)audioCtx=new AC();if(audioCtx.state==='suspended'){audioCtx.resume();}return audioCtx;}
+function playTone(f,type,g,d){const c=getAudioCtx();const o=c.createOscillator();const gain=c.createGain();o.connect(gain);gain.connect(c.destination);o.type=type;o.frequency.value=f;o.start();gain.gain.setValueAtTime(g,c.currentTime);gain.gain.exponentialRampToValueAtTime(0.001,c.currentTime+d);o.stop(c.currentTime+d);} 
+function sfxCorrect(){playTone(660,'triangle',0.3,0.25);} function sfxWrong(){playTone(140,'sawtooth',0.3,0.35);} function sfxMilestone(){playTone(900,'square',0.3,0.3);} function sfxSpace(){playTone(300,'sine',0.3,0.18);setTimeout(()=>playTone(520,'sine',0.3,0.18),170);} function fanfare(){playTone(523,'square',0.25,0.18);setTimeout(()=>playTone(659,'square',0.25,0.18),170);setTimeout(()=>playTone(784,'square',0.3,0.26),340);} 
+
+// Logik
+function randomSpaceTarget(){return Math.floor(Math.random()*8)+3;} // 3–10
+function poolForScore(sc){
+  if(sc<15)return HOME;                    // bara grundrad
+  if(sc<25)return HOME.concat(TIERS[0]);   // + r,u
+  if(sc<35)return HOME.concat(TIERS[0],TIERS[1]);
+  if(sc<45)return HOME.concat(TIERS[0],TIERS[1],TIERS[2]);
+  if(sc<55)return HOME.concat(TIERS[0],TIERS[1],TIERS[2],TIERS[3]);
+  if(sc<65)return HOME.concat(TIERS[0],TIERS[1],TIERS[2],TIERS[3],TIERS[4]);
+  let pool=new Set(HOME.concat(TIERS[0],TIERS[1],TIERS[2],TIERS[3],TIERS[4]));
+  const extra=Math.min(TIERS[5].length,Math.floor((sc-65)/10)+1);
+  for(let i=0;i<extra;i++)pool.add(TIERS[5][i]);
+  return Array.from(pool);
+}
+function updateHUD(){
+  els.score.textContent=score;
+  els.lives.textContent='❤️'.repeat(lives)+'🖤'.repeat(Math.max(0,MAX_LIVES-lives));
+  els.chapter.textContent=Math.floor(score/20)+1;
+}
+function announceCurrent(){
+  if(current===' '){speak('mellanslag');els.finger.textContent='tumme';return;}
+  const info=INSTR[current];if(!info){speak(current);els.finger.textContent='';return;}
+  const [w,f]=info;const c=correctCount[current]||0; if(c<3){els.finger.textContent=w+' '+f;speak(w+' '+f);} else {els.finger.textContent=w;speak(w);} }
+function nextLetter(){
+  spaceCounter++; if(spaceCounter>=spaceTarget){current=' ';spaceCounter=0;spaceTarget=randomSpaceTarget(); sfxSpace(); els.key.textContent='␣'; els.key.className='big-key'; announceCurrent(); return;}
+  const pool=poolForScore(score); current=pool[Math.floor(Math.random()*pool.length)]; els.key.textContent=current.toUpperCase(); els.key.className='big-key'; announceCurrent();
+}
+function repeatCurrent(){ if(!current) return; const info=INSTR[current]||[current,'']; const [w,f]=info; els.finger.textContent=w+(f?(' '+f):''); speak(w+(f?(' '+f):'')); }
+
+// Spelkontroll
+function startGame(){ if(running) return; running=true; score=0; lives=MAX_LIVES; correctCount={}; spaceCounter=0; spaceTarget=randomSpaceTarget(); els.start.disabled=true; els.stop.disabled=false; els.retry.disabled=true; updateHUD(); nextLetter(); focusArena(); }
+function stopGame(){ if(!running) return; running=false; els.start.disabled=false; els.stop.disabled=true; els.retry.disabled=false; try{speechSynthesis.cancel();}catch{} }
+function retryGame(){ if(running) return; running=true; score=0; lives=MAX_LIVES; correctCount={}; spaceCounter=0; spaceTarget=randomSpaceTarget(); els.start.disabled=true; els.stop.disabled=false; els.retry.disabled=true; updateHUD(); nextLetter(); focusArena(); }
+
+function handleCorrect(){
+  if(current!==' ') correctCount[current]=(correctCount[current]||0)+1;
+  score++; if(score>best){best=score;localStorage.setItem('tangentkungenHighScore',String(best));els.best.textContent=best;}
+  els.key.classList.add('correct'); sfxCorrect();
+  if(score%5===0 && score%20!==0) sfxMilestone();
+  if(score%20===0){ fanfare(); speak(`Kapitel ${Math.floor(score/20)+1}. Du har ${score} poäng.`); }
+  updateHUD(); nextLetter();
+}
+function handleWrong(){
+  // Varje feltryck kostar 1 liv; stanna kvar på samma bokstav
+  els.key.classList.add('incorrect'); sfxWrong();
+  lives = Math.max(0, lives-1);
+  updateHUD();
+  if(lives<=0){ stopGame(); speak(`Slut. Du fick totalt ${score} poäng.`); }
+  else {
+    const info=INSTR[current]||[current,''];
+    const [w,f]=info; const msg=w+(f?(' '+f):'');
+    speakQ(`${lives} liv kvar`);
+    speakQ(msg);
+    els.finger.textContent=msg;
+  }
+}
+
+function onKey(e){
+  const k=e.key.toLowerCase();
+  if(k==='enter'){ e.preventDefault(); running?stopGame():startGame(); return; }
+  if(k==='r' && !running){ retryGame(); return; }
+  if(k==='backspace'){ e.preventDefault(); repeatCurrent(); return; }
+  if(!running || !current) return;
+  if(current===' '){ if(e.key===' '){ handleCorrect(); } else if(k.length===1){ handleWrong(); } return; }
+  if(k.length!==1) return;
+  if(k===current){ handleCorrect(); }
+  else if(/[a-zåäö]/.test(k)){ handleWrong(); }
+}
+
+// Fokusfix för hastighetsknappar
+function focusArena(){ els.key.setAttribute('tabindex','-1'); els.key.focus({preventScroll:true}); setTimeout(()=>{ els.key.removeAttribute('tabindex'); }, 0); }
+function blurTarget(el){ try{ el.blur(); }catch{} }
+['mousedown','touchstart'].forEach(evt=>{ els.slower.addEventListener(evt, ()=>blurTarget(els.slower)); els.faster.addEventListener(evt, ()=>blurTarget(els.faster)); });
+els.slower.addEventListener('click', ()=>{ speechRate=Math.max(0.5, speechRate-0.1); els.speedDisplay.textContent=speechRate.toFixed(1)+'x'; blurTarget(els.slower); focusArena(); });
+els.faster.addEventListener('click', ()=>{ speechRate=Math.min(3.0, speechRate+0.1); els.speedDisplay.textContent=speechRate.toFixed(1)+'x'; blurTarget(els.faster); focusArena(); });
+window.addEventListener('keydown', (e)=>{ const a=document.activeElement; if((a===els.slower || a===els.faster) && e.key===' '){ e.preventDefault(); } }, true);
+
+// Bindningar & aktivering av ljudmotor
+els.start.addEventListener('click',startGame); els.stop.addEventListener('click',stopGame); els.retry.addEventListener('click',retryGame);
+window.addEventListener('keydown',onKey);
+['click','keydown','touchstart'].forEach(evt=> window.addEventListener(evt,()=>{ try{ getAudioCtx(); }catch{} }, {once:true, passive:true}));
+</script>
+</body>
+</html>
